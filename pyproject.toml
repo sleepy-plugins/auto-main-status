@@ -1,0 +1,12 @@
+[project]
+name = "auto-main-status"
+version = "1.0.0"
+description = "Automatically updates system status based on device activity"
+authors = [{ name = "Krnl", email = "nt@siiway.org" }]
+dependencies = []
+
+[tool.sleepy]
+enabled = true
+[tool.sleepy.dependencies]
+"device-status" = ">=1.0.0"
+"main-status" = ">=1.0.0"
