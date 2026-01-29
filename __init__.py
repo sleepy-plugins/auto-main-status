@@ -12,8 +12,7 @@ from plugin import PluginBase, PluginMetadata, plugin_manager
 from main import engine, manager
 import models as m
 
-CONFIG_FILE = 'data/auto_main_status_config.json'
-
+CONFIG_FILE = 'auto_main_status_config.json'
 STATUS_AWAKE = 0
 STATUS_SLEEPY = 1
 
@@ -27,50 +26,57 @@ class Plugin(PluginBase):
         status_str = "Enabled" if self.enabled else "Disabled"
         l.info(f"{self.metadata.name} loaded. Automation is {status_str}.")
         
-        # 1. 注册 Hook
         plugin_manager.register_hook('device_activity', self.on_device_activity)
-        
-        # 2. 初始检查 (防止服务器启动时状态就不对)
+
+    async def on_startup(self):
+        l.info(f"{self.metadata.name} performing initial check...")
         asyncio.create_task(self._perform_check())
 
-    def on_unload(self):
-        # PluginManager 目前没有 unregister_hook，但卸载插件时通常是整个应用关闭或重载
-        pass
+    def _load_config(self) -> bool:
+        if not os.path.exists(self.config_path):
+            return True
+        try:
+            with open(self.config_path, 'r') as f:
+                data = json.load(f)
+                return data.get('enabled', True)
+        except:
+            return True
 
     def _save_config(self, enabled: bool):
+        self.enabled = enabled # Update memory
         with open(self.config_path, 'w') as f:
             json.dump({'enabled': enabled}, f)
 
+    def on_register_cli(self, subparsers: argparse._SubParsersAction):
+        parser = subparsers.add_parser('auto-main', help='Configure automatic main status')
+        sub = parser.add_subparsers(dest='action', required=True)
+
+        sub.add_parser('enable', help='Enable automation').set_defaults(func=self.handle_enable)
+        sub.add_parser('disable', help='Disable automation').set_defaults(func=self.handle_disable)
+        sub.add_parser('status', help='Show automation status').set_defaults(func=self.handle_status)
+
     def handle_enable(self, args):
         self._save_config(True)
-        print("Automatic Main Status: ENABLED. (Restart server to apply if running)")
+        print("Automatic Main Status: ENABLED.")
 
     def handle_disable(self, args):
         self._save_config(False)
-        print("Automatic Main Status: DISABLED. (Restart server to apply if running)")
+        print("Automatic Main Status: DISABLED.")
 
     def handle_status(self, args):
         print(f"Automatic Main Status: {'ENABLED' if self._load_config() else 'DISABLED'}")
 
     async def on_device_activity(self, *args, **kwargs):
-        """
-        当检测到设备活动时触发
-        """
         if not self.enabled:
             return
-            
-        l.debug(f"Device activity detected from {kwargs.get('source', 'unknown')}, checking main status...")
         await self._perform_check()
 
     async def _perform_check(self):
-        """执行逻辑检查"""
-        # 使用 create_task 或者直接 await 都可以，这里直接 await 保证顺序
         try:
             with Session(engine) as sess:
                 meta = sess.exec(select(m.Metadata)).first()
                 if not meta: return
 
-                # 查询在线设备数
                 online_devices = sess.exec(select(m.DeviceData).where(m.DeviceData.using == True)).all()
                 has_online = len(online_devices) > 0
 
@@ -83,7 +89,7 @@ class Plugin(PluginBase):
                     sess.add(meta)
                     sess.commit()
                     
-                    l.info(f"[AutoMain] Status changed: {old} -> {target_status} (Triggered by Event)")
+                    l.info(f"[AutoMain] Status changed: {old} -> {target_status} (Online: {len(online_devices)})")
                     await manager.evt_broadcast('status_changed', {'status': target_status})
         
         except Exception as e:

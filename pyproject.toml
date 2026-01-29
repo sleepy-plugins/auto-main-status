@@ -1,6 +1,6 @@
 [project]
 name = "auto-main-status"
-version = "1.0.0"
+version = "1.0.1"
 description = "Automatically updates system status based on device activity"
 authors = [{ name = "Krnl", email = "nt@siiway.org" }]
 dependencies = []
